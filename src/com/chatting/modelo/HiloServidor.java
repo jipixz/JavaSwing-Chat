@@ -1,9 +1,8 @@
 package com.chatting.modelo;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
 
@@ -17,41 +16,74 @@ import com.chatting.vista.VistaServidor;
  */
 public class HiloServidor extends Thread {
 
-	private Socket cliente;
-	private VistaServidor vista;
-	
-	private BufferedReader entrada;
-	private PrintWriter salida;	
-	
+	private final Socket cliente;
+	private final VistaServidor vista;
+
+	private final ObjectInputStream entrada;
+	private final ObjectOutputStream salida;
+
 	private String nombre;
-	
-	/* ======================== Constructor y ejecución ========================== */
-	
-	public HiloServidor(VistaServidor vista, Socket cliente) throws IOException {
+
+	/*
+	 * ======================== Constructor y ejecución ==========================
+	 */
+
+	public HiloServidor(final VistaServidor vista, final Socket cliente) throws IOException {
 		this.vista = vista;
 		this.cliente = cliente;
 		this.cliente.setSoTimeout(5000);
 		nombre = "";
-		entrada = new BufferedReader(new InputStreamReader(cliente.getInputStream()));
-		salida = new PrintWriter(cliente.getOutputStream(), true);
+		entrada = new ObjectInputStream((cliente.getInputStream()));
+		salida = new ObjectOutputStream((cliente.getOutputStream()));
 	}
-	
+
 	public void run() {
-		String cadena;
-		inicializacionCliente();
+		Mensaje mensaje;
+		try {
+			inicializacionCliente();
+		} catch (final ClassNotFoundException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		} catch (final IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 		try {
 			do {
-				cadena = recibirTCP();
-				messageHandler(cadena.trim());
-			}while(!cadena.trim().equals(Constantes.CODIGO_SALIDA));
+				mensaje = (Mensaje) recibirTCP();
+				messageHandler(mensaje);
+			}while(!mensaje.getMessage().trim().equals(Constantes.CODIGO_SALIDA));
 			
 			entrada.close();
 			salida.close();
 			cliente.close();
-		} catch(SocketTimeoutException e) { 
-			Servidor.imprimirTodos("<SERVER> "+nombre+" se ha caído (connection timeout).");
-			Servidor.sacarCliente(nombre);
-		} catch(IOException e) { Servidor.imprimirTodos("<SERVER> "+nombre+" desconectado dolorosamente."); }
+		} catch(final SocketTimeoutException e) { 
+			final Mensaje server = new Mensaje("Server","<SERVER> "+nombre+" se ha caído (connection timeout).");
+			try {
+				Servidor.imprimirTodos(server);
+			} catch (final IOException e1) {
+				// TODO Auto-generated catch block
+				e1.printStackTrace();
+			}
+			try {
+				Servidor.sacarCliente(nombre);
+			} catch (IOException e1) {
+				// TODO Auto-generated catch block
+				e1.printStackTrace();
+			}
+		} catch(final IOException e) { 
+			final Mensaje server = new Mensaje("Server","<SERVER> "+nombre+" desconectado dolorosamente.");
+
+			try {
+				Servidor.imprimirTodos(server);
+			} catch (final IOException e1) {
+				// TODO Auto-generated catch block
+				e1.printStackTrace();
+			}
+		} catch (final ClassNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 		vista.setClientesConectados(Servidor.getClientes().getClientesConectados());
 	}
 	
@@ -61,19 +93,24 @@ public class HiloServidor extends Thread {
 		return nombre;
 	}
 	
-	public void setNombre(String nombre) {
+	public void setNombre(final String nombre) {
 		this.nombre = nombre;
 	}
 	
-	public void cerrarConexion() {
-		enviarTCP(Constantes.CODIGO_SALIDA);
+	public void cerrarConexion() throws IOException {
+		final Mensaje outCode = new Mensaje(getNombre(),Constantes.CODIGO_SALIDA);
+		enviarTCP(outCode);
 	}
 	
 	/**
 	 * Aquí tratamos los mensajes que le lleguen al server.
+	 * 
 	 * @param mensaje
+	 * @throws ClassNotFoundException
+	 * @throws IOException
 	 */
-	private void messageHandler(String mensaje) {
+	private void messageHandler(final Mensaje msg) throws ClassNotFoundException, IOException {
+		final String mensaje = msg.getMessage();
 		switch(mensaje.trim()) {
 			case Constantes.CODIGO_NICK:
 				
@@ -81,19 +118,27 @@ public class HiloServidor extends Thread {
 				
 			break;
 			case Constantes.CODIGO_SALIDA:
-				
-				Servidor.imprimirTodos("<SERVER> "+ nombre+ " ha abandonado el chat.");
+				final Mensaje server = new Mensaje("Server","<SERVER> "+ nombre+ " ha abandonado el chat.");
+				Servidor.imprimirTodos(server);
 				Servidor.sacarCliente(nombre);
 				
 			break;
 			case Constantes.CODIGO_LISTAR:
-				
-				enviarTCP("<SERVER> CLIENTES CONECTADOS: " + new String(Servidor.getClientes().getListaClientes()));
+				final Mensaje listing = new Mensaje("Server","<SERVER> CLIENTES CONECTADOS: " + new String(Servidor.getClientes().getListaClientes()));
+				enviarTCP(listing);
 				
 			break;
 			default:
-				
-				Servidor.imprimirTodos(nombre+": "+ mensaje);
+				final String[] parts= mensaje.split(" ",3);
+				if (parts[0].contains("/PRIVATE")) {
+					final Mensaje MessageContainer = new Mensaje(nombre, parts[1], nombre+": "+parts[2]);
+					//Servidor.imprimirA(MessageContainer);
+					Servidor.imprimirTodos(MessageContainer);
+
+				} else{
+					final Mensaje MessageContainer = new Mensaje(nombre, nombre+": "+mensaje);
+					Servidor.imprimirTodos(MessageContainer);
+				}
 			
 			break;
 		}
@@ -101,25 +146,39 @@ public class HiloServidor extends Thread {
 
 	/**
 	 * Lo que hacemos cuando un cliente envía el código de cambio de nick.
+	 * 
+	 * @throws ClassNotFoundException
+	 * @throws IOException
 	 */
-	private void cambioNick() {
-		String nombreAnterior = nombre;
+	private void cambioNick() throws ClassNotFoundException, IOException {
+		final String nombreAnterior = nombre;
 		Servidor.sacarCliente(nombreAnterior);
-		nombre = nombreNoRepetido(recibirTCP());
+		final Mensaje msg = recibirTCP();
+		nombre = nombreNoRepetido(msg.getMessage());
 		Servidor.meterCliente(this);
-		Servidor.imprimirTodos("<SERVER> "+ nombreAnterior + " ha cambiado su nombre por "+ nombre +".");
+		final Mensaje Server = new Mensaje("Server","<SERVER> "+ nombreAnterior + " ha cambiado su nombre por "+ nombre +".");
+		
+		Servidor.imprimirTodos(Server);
 	}
 
 	/**
 	 * Aquí inicializamos el cliente (darle nombre y meterlo en listaClientes)
+	 * 
+	 * @throws ClassNotFoundException
+	 * @throws IOException
 	 */
-	private void inicializacionCliente() {
-    	nombre = nombreNoRepetido(recibirTCP());
+	private void inicializacionCliente() throws ClassNotFoundException, IOException {
+		final Mensaje msg = recibirTCP();
+
+    nombre = nombreNoRepetido(msg.getMessage());
 		
 		Servidor.meterCliente(this);
 		Servidor.getClientes().actualizarConectados();
-		Servidor.imprimirTodos("<SERVER> "+ nombre + " se ha unido al chat.");
-		Servidor.imprimirTodos("<SERVER> CLIENTES CONECTADOS: " + new String(Servidor.getClientes().getListaClientes()));
+		final Mensaje Joinchat = new Mensaje("Server","<SERVER> "+ nombre + " se ha unido al chat.");
+		final Mensaje connectedClient = new Mensaje("Server","<SERVER> CLIENTES CONECTADOS: " + new String(Servidor.getClientes().getListaClientes()));
+
+		Servidor.imprimirTodos(Joinchat);
+		Servidor.imprimirTodos(connectedClient);
 
 	}
 	
@@ -128,7 +187,7 @@ public class HiloServidor extends Thread {
 	 * @param nombreViejo
 	 * @return
 	 */
-	private String nombreNoRepetido(String nombreViejo) {
+	private String nombreNoRepetido(final String nombreViejo) {
 		// Si ya existe un cliente que se llame así, lo renombramos
     	String nuevoNombre = nombreViejo; int i = 1;
     	while(Servidor.getClientes().yaEstaDentro(nuevoNombre)) { 
@@ -140,14 +199,16 @@ public class HiloServidor extends Thread {
 	
 	/**
 	 * Recibe un dato.
+	 * 
 	 * @return
+	 * @throws ClassNotFoundException
 	 */
-	public String recibirTCP() {
-		String cadenaRecibida = null;
+	public Mensaje recibirTCP() throws ClassNotFoundException {
+		Mensaje cadenaRecibida = null;
 		do {
 			try {
-				cadenaRecibida = entrada.readLine();
-			} catch (IOException e) { cadenaRecibida = null; }
+				cadenaRecibida = (Mensaje) entrada.readObject();
+			} catch (final IOException e) { cadenaRecibida = null; }
 		} while(cadenaRecibida == null);
 			
 		return cadenaRecibida;
@@ -155,10 +216,12 @@ public class HiloServidor extends Thread {
 	
 	/**
 	 * Envía un dato.
+	 * 
 	 * @param cadena
+	 * @throws IOException
 	 */
-	public void enviarTCP(String cadena) {
-			salida.println(cadena );
+	public void enviarTCP(final Mensaje cadena) throws IOException {
+			salida.writeObject(cadena );
 	}
 	
 }

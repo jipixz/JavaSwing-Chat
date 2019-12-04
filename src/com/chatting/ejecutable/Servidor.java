@@ -11,6 +11,7 @@ import javax.swing.JFrame;
 import com.chatting.Constantes;
 import com.chatting.controlador.ControladorServidor;
 import com.chatting.modelo.ListaClientes;
+import com.chatting.modelo.Mensaje;
 import com.chatting.modelo.HiloServidor;
 import com.chatting.vista.VistaServidor;
 
@@ -50,13 +51,17 @@ public class Servidor {
     
     /* ======================== Métodos Básicos ========================== */
     
-	public static void imprimirConsola(String msg) {
-		vista.addText(msg);
+	public static void imprimirConsola(Mensaje msg) {
+		vista.addText(msg.getMessage());
 	}
 	
-	public static void imprimirTodos(String msg) {
+	public static void imprimirTodos(Mensaje msg) throws IOException {
 		imprimirConsola(msg);
 		clientes.emitirATodos(msg);
+	}
+	public static void imprimirA(Mensaje msg, String username) throws IOException {
+		imprimirConsola(msg);
+		clientes.emitirA(msg, username);
 	}
 
 	public static ListaClientes getClientes() {
@@ -104,30 +109,37 @@ public class Servidor {
 			
 			// Si está lleno el server, lo rechazamos.
 	    	if(clientes.getClientesConectados() >= Constantes.MAX_CONEXIONES) {
-				thread.enviarTCP("lleno");
-				cliente.close();
-				thread = null;
-	    	}else 
-	    		thread.enviarTCP("aceptado");
+					Mensaje full = new Mensaje(thread.getNombre(),"lleno");
+					thread.enviarTCP(full);
+					cliente.close();
+					thread = null;
+				}else {
+					Mensaje accepted = new Mensaje(thread.getNombre(),"aceptado");
+	    		thread.enviarTCP(accepted);
+				}
     	}catch(IOException e) { /* Cuando no hay nadie intentando conectar */ }
     }
     
     /**
-     * Añade un cliente al HashMap de clientes.
-     * Hemos elegido HashMap para almacenar su nick como clave.
-     * @param thread
-     */
-    public static void meterCliente(HiloServidor thread) {
+	 * Añade un cliente al HashMap de clientes. Hemos elegido HashMap para almacenar
+	 * su nick como clave.
+	 * 
+	 * @param thread
+	 * @throws IOException
+	 */
+	public static void meterCliente(HiloServidor thread) throws IOException {
     	clientes.add(thread.getNombre(), thread);
     	clientes.actualizarConectados();
     	vista.setClientesConectados(clientes.getClientesConectados());
     }
     
     /**
-     * Saca un cliente de la lista de clientes.
-     * @param nombre
-     */
-    public static void sacarCliente(String nombre) {
+	 * Saca un cliente de la lista de clientes.
+	 * 
+	 * @param nombre
+	 * @throws IOException
+	 */
+	public static void sacarCliente(String nombre) throws IOException {
     	clientes.remove(nombre);
     	clientes.actualizarConectados();
     	vista.setClientesConectados(clientes.getClientesConectados());

@@ -1,9 +1,8 @@
 package com.chatting.modelo;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.net.Socket;
 
 import com.chatting.Constantes;
@@ -19,18 +18,28 @@ public class UtilidadesCliente {
 	private VistaCliente vista;
 	private ControladorCliente controlador;
 	private Socket cliente;
-	
-	private BufferedReader entrada;
-	private PrintWriter salida;
+	private String Nickname;
+	private ObjectInputStream entrada;
+	private ObjectOutputStream salida;
 	
 	/* ======================== Métodos ========================== */
 	
-	public UtilidadesCliente(Socket cliente, VistaCliente vista, ControladorCliente controlador) throws IOException {
+	public UtilidadesCliente(Socket cliente, VistaCliente vista, ControladorCliente controlador, String nickname) throws IOException {
+		
+		System.out.println("start constructor");
 		this.cliente = cliente;
 		this.vista = vista;
 		this.controlador = controlador;
-		entrada = new BufferedReader(new InputStreamReader(cliente.getInputStream()));
-		salida = new PrintWriter(cliente.getOutputStream(), true);
+		System.out.println("middle constructor");
+
+		this.Nickname = nickname;
+		System.out.println("middle2 constructor");
+
+		this.salida = new ObjectOutputStream(cliente.getOutputStream());
+		System.out.println("end constructor");
+		this.entrada = new ObjectInputStream(cliente.getInputStream());
+		System.out.println("end2 constructor");
+		
 	}
 	
 	/* ======================== Métodos ========================== */
@@ -40,10 +49,13 @@ public class UtilidadesCliente {
 	 * @return
 	 * @throws IOException 
 	 */
-	public String recibirTCP() throws IOException {
-		String cadenaRecibida = null;
+	public String getNickname(){
+		return	this.Nickname;
+	}
+	public Mensaje recibirTCP() throws IOException, ClassNotFoundException {
+		Mensaje cadenaRecibida = null;
 		do {
-				cadenaRecibida = entrada.readLine();
+				cadenaRecibida = (Mensaje) entrada.readObject();
 		} while(cadenaRecibida==null);
 			
 		return cadenaRecibida;
@@ -53,8 +65,8 @@ public class UtilidadesCliente {
 	 * Envía un dato.
 	 * @param cadena
 	 */
-	public void enviarTCP(String cadena) {
-			salida.println(cadena );
+	public void enviarTCP(Mensaje cadena) throws IOException, ClassNotFoundException{
+			salida.writeObject(cadena);
 	}
 	
 	/**
@@ -71,30 +83,27 @@ public class UtilidadesCliente {
 	}
 	
 	/**
-     * Interpretamos el mensaje leido en el cliente.
-     */
-    public void handleMessage() {
+	 * Interpretamos el mensaje leido en el cliente.
+	 * 
+	 * @throws ClassNotFoundException
+	 * @throws IOException
+	 */
+	public void handleMessage() throws ClassNotFoundException, IOException {
 		try {
-			String msg = recibirTCP();
-		
-			switch(msg.trim()){
+			Mensaje msg = recibirTCP();
+			switch(msg.getMessage().trim()){
 				// recibimos código de desconectar.
 				case Constantes.CODIGO_SALIDA:
-					
 					controlador.salir();
 					vista.addText("<CLIENT> El servidor se ha apagado");
-					
 				break;
 				// Recibimos actualizar numero clientes
 				case Constantes.CODIGO_ACTUALIZAR_CONECTADOS:
-					
-					vista.setClientes(recibirTCP());
-					
+					Mensaje newmsg = recibirTCP();
+					vista.setClientes(newmsg.getMessage());
 				break;
 				default: // Recibimos un mensaje normal y corriente
-					
-					vista.addText(msg);
-						
+					vista.addText(msg.getMessage());
 				break;
 			}
 	    	

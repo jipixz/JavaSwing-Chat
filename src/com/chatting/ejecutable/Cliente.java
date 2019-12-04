@@ -10,6 +10,7 @@ import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 
 import com.chatting.controlador.ControladorCliente;
+import com.chatting.modelo.Mensaje;
 import com.chatting.modelo.UtilidadesCliente;
 import com.chatting.vista.VistaCliente;
 
@@ -24,10 +25,9 @@ public class Cliente {
 	private static ControladorCliente controlador;
 	private static Socket cliente;
 	private static UtilidadesCliente utilidades;
-	
 	/* ======================== Main ========================== */
 
-	public static void main(String[] args) {
+	public static void main(String[] args) throws ClassNotFoundException {
 		
 		configurarVentana();
 		
@@ -70,14 +70,16 @@ public class Cliente {
     
 	/**
 	 * Lanza la ventana e inicia la conexión con el servidor.
+	 * 
 	 * @throws NumberFormatException
 	 * @throws IOException
+	 * @throws ClassNotFoundException
 	 */
-    private static void iniciarCliente() throws NumberFormatException, IOException {
+	private static void iniciarCliente() throws NumberFormatException, IOException, ClassNotFoundException {
     	String host = JOptionPane.showInputDialog(ventana, "Introduce la ip del host (nada = localhost)", "Datos necesarios", JOptionPane.QUESTION_MESSAGE);
     	String puerto = JOptionPane.showInputDialog(ventana, "Introduce el puerto (nada = 42455)", "Datos necesarios", JOptionPane.QUESTION_MESSAGE);
     	String nickname = JOptionPane.showInputDialog(ventana, "Introduce tu nickname", "Datos necesarios", JOptionPane.QUESTION_MESSAGE);
-    	
+			
     	if(puerto.equals(""))
     		puerto = "42455";
     	if(host.equals(""))
@@ -86,13 +88,20 @@ public class Cliente {
     	try {
     		if(nickname.equals(""))
     			throw new IOException("Nickname no válido.");
-    		// Conectamos estableciendo un TIMEOUT
-    		cliente = new Socket();
-    		cliente.connect(new InetSocketAddress(host, Integer.parseInt(puerto)), 5000);
-    		utilidades = new UtilidadesCliente(cliente, vista, controlador);
+					// Conectamos estableciendo un TIMEOUT
+				System.out.println("ReceiverIniciarCliente");
+				cliente = new Socket();
+				System.out.println("socketInit");
+				
+				cliente.connect(new InetSocketAddress(host, Integer.parseInt(puerto)), 5000);
+				System.out.println("socketConnect");
+				
+    		utilidades = new UtilidadesCliente(cliente, vista, controlador, nickname);
+				System.out.println("sock utilities");
     		
-    		// Sino está lleno entramos, si está lleno lanzaremos el error.
-    		if(utilidades.recibirTCP().trim().equals("aceptado")) {
+				// Sino está lleno entramos, si está lleno lanzaremos el error.
+				Mensaje msg = utilidades.recibirTCP();
+    		if(msg.getMessage().trim().equals("aceptado")) {
     			iniciarChat(nickname);
     		}else {
     			utilidades = null;
@@ -104,16 +113,21 @@ public class Cliente {
     }
     
     /**
-     * Activa la ventana hacemos asociaciones correspondientes al conectar por primera vez.
-     * @param nick
-     * @throws IOException
-     */
-    private static void iniciarChat(String nick) throws IOException {
-    	ventana.setVisible(true);
+	 * Activa la ventana hacemos asociaciones correspondientes al conectar por
+	 * primera vez.
+	 * 
+	 * @param nick
+	 * @throws IOException
+	 * @throws ClassNotFoundException
+	 */
+	private static void iniciarChat(String nick) throws IOException, ClassNotFoundException {
+		System.out.println("ReceiverIniciarChat");
+    ventana.setVisible(true);
 		vista.setEnabled(true);
 		controlador.setCliente(utilidades);
-		utilidades.enviarTCP(nick);
-    }
+		Mensaje nickName= new Mensaje(utilidades.getNickname(),utilidades.getNickname());
+		utilidades.enviarTCP(nickName);
+  }
     
     
 }
